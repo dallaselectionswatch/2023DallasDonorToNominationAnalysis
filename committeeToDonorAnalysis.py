@@ -21,13 +21,16 @@ full_name_match_worksheet.write(0, 0, "Committee Member")
 full_name_match_worksheet.write(0, 1, "Donor")
 full_name_match_worksheet.write(0, 2, "Amount")
 full_name_match_worksheet.write(0, 3, "Campaign")
-full_name_match_worksheet.write(0, 3, "Nominated by")
+full_name_match_worksheet.write(0, 4, "Nominated by")
 
+full_match_total_donated_to_nominator_worksheet = workbook.add_worksheet("sum_donations_to_nominator")
+full_match_total_donated_to_nominator_worksheet.write(0, 0, "Committee Member")
+full_match_total_donated_to_nominator_worksheet.write(0, 1, "Amount")
+full_match_total_donated_to_nominator_worksheet.write(0, 2, "Campaign")
 
 # Used to review the committee membership document
 committee_members_and_nominators = {}
 extracted_committee_member_names = []
-
 
 """
     Primary way we determine if the line in the committee membership doc has the name of a committee member
@@ -102,10 +105,11 @@ df = pd.read_excel(excel_path)
 # Iterate over each donation in the dataframe
 last_name_match_row = 1
 full_name_match_row = 1
-
+full_match_total_donated_to_nominator_row = 1
 print("Comparing names of committee members to campaign donors")
 
 for committee_member in extracted_committee_member_names:
+    total_donated_to_nominator = 0
     member_last_name = committee_member.split()[-2].lower() if isSuffix(committee_member.split()[-1]) else committee_member.split()[-1].lower()
     member_first_name = committee_member.split()[0].lower()
     # Search for matching name of a committee member in the donation dataframe
@@ -125,5 +129,15 @@ for committee_member in extracted_committee_member_names:
                 full_name_match_worksheet.write(full_name_match_row, 3, str(row['Candidate']))
                 full_name_match_worksheet.write(full_name_match_row, 4, str(committee_members_and_nominators[committee_member]))
                 full_name_match_row = full_name_match_row + 1
+                if committee_members_and_nominators[committee_member].lower() in str(row['Candidate']).lower():
+                    total_donated_to_nominatgior = row['Amount'] + total_donated_to_nominator
+                    print("Committee Member: " + committee_member)
+                    print("Row Donation: " + str(row['Amount']))
+                    print("Total Donation: " + str(total_donated_to_nominator))
+    if total_donated_to_nominator > 0:
+        full_match_total_donated_to_nominator_worksheet.write(full_match_total_donated_to_nominator_row, 0, committee_member)
+        full_match_total_donated_to_nominator_worksheet.write(full_match_total_donated_to_nominator_row, 1, total_donated_to_nominator)
+        full_match_total_donated_to_nominator_worksheet.write(full_match_total_donated_to_nominator_row, 2, str(committee_members_and_nominators[committee_member]))
+        full_match_total_donated_to_nominator_row = full_match_total_donated_to_nominator_row + 1
 
 workbook.close()
