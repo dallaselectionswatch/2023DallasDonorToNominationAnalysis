@@ -1,17 +1,16 @@
-import PyPDF2
-import re
-import pandas as pd
-import spacy
-import xlsxwriter
+import PyPDF2, re, pandas as pd, xlsxwriter, json
 
 
-# Open the PDF file
+# Open committee membership document
 pdf_path = 'boardmembers.pdf'
 pdf_file = open(pdf_path, 'rb')
-nlp = spacy.load('en_core_web_sm')
+pdf_reader = PyPDF2.PdfReader(pdf_file)
+
+# Use this workbook to store comparison results
 workbook = xlsxwriter.Workbook('donor_committee_member_matches.xlsx')
-last_name_match_worksheet = workbook.add_worksheet("last_name_match")
+
 #write column headers to worksheet
+last_name_match_worksheet = workbook.add_worksheet("last_name_match")
 last_name_match_worksheet.write(0, 0, "Committee Member")
 last_name_match_worksheet.write(0, 1, "Donor")
 last_name_match_worksheet.write(0, 2, "Amount")
@@ -22,18 +21,16 @@ full_name_match_worksheet.write(0, 0, "Committee Member")
 full_name_match_worksheet.write(0, 1, "Donor")
 full_name_match_worksheet.write(0, 2, "Amount")
 full_name_match_worksheet.write(0, 3, "Campaign")
+full_name_match_worksheet.write(0, 3, "Nominated by")
 
-# Create a PDF reader object
-pdf_reader = PyPDF2.PdfReader(pdf_file)
 
-# Initialize variables
-names_and_nominators = {}
-current_name = None
-extracted_names = []
+# Used to review the committee membership document
+committee_members_and_nominators = {}
+extracted_committee_member_names = []
 
 
 """
-    Primary way we determine if the line has the name of a committee member
+    Primary way we determine if the line in the committee membership doc has the name of a committee member
 """
 def isPositionHeader(line):
     position_titles = ["District", "Position", "Non-Voting"]
@@ -76,37 +73,42 @@ def extractNameFromLine(line):
 
 # Iterate over each page of the PDF
 print("Reading from committee membership document")
+line_counter = 0
 for page in pdf_reader.pages:
     # Extract the text from the current page
     lines = page.extract_text().split("\n")
-    for line in lines:
+    for i, line in enumerate(lines):
         if isPositionHeader(line) and not isVacantPosition(line):
             if isDescription(line):
                 continue
-            name = " ".join(extractNameFromLine(line))
-            extracted_names.append(name)
+            committee_member = " ".join(extractNameFromLine(line))
+            extracted_committee_member_names.append(committee_member)
+            nominator_line = lines[i + 1]
+            nominator = nominator_line.split()[-1]
+            committee_members_and_nominators[committee_member] = nominator
+
+# write output to a json file for repeated usage; we can move the PDF analysis to another file after this
+with open("committee_members_and_nominators.json", "w") as outfile:
+    json.dump(committee_members_and_nominators, outfile)
 
 # Close the PDF file
 pdf_file.close()
 
-"""
-Still not working.
-
-Example: Demetris Sampson donated to Zarin Gracey and is on the DFW - DALLAS FORT WORTH INTERNATIONAL AIRPORT BOARD
-"""
-
-# Load the Excel file
+# Load the donor-campaign file to a pandas dataframe
 print("Opening campaign donor worksheet")
 excel_path = '2023 Dallas Campaign Donors.xlsx'
 df = pd.read_excel(excel_path)
-# Iterate over each donation from excel
+
+# Iterate over each donation in the dataframe
 last_name_match_row = 1
 full_name_match_row = 1
+
 print("Comparing names of committee members to campaign donors")
-for committee_member in extracted_names:
+
+for committee_member in extracted_committee_member_names:
     member_last_name = committee_member.split()[-2].lower() if isSuffix(committee_member.split()[-1]) else committee_member.split()[-1].lower()
     member_first_name = committee_member.split()[0].lower()
-    # Search for matching name of a nominee
+    # Search for matching name of a committee member in the donation dataframe
     for index, row in df.iterrows():
         donor_last_name = str(row['Donor']).split(",")[0].lower()
         donor_name = str(row['Donor']).split("\n")[0].lower()
@@ -121,6 +123,7 @@ for committee_member in extracted_names:
                 full_name_match_worksheet.write(full_name_match_row, 1, str(row['Donor']))
                 full_name_match_worksheet.write(full_name_match_row, 2, str(row['Amount']))
                 full_name_match_worksheet.write(full_name_match_row, 3, str(row['Candidate']))
+                full_name_match_worksheet.write(full_name_match_row, 4, str(committee_members_and_nominators[committee_member]))
                 full_name_match_row = full_name_match_row + 1
 
 workbook.close()
